@@ -28,7 +28,7 @@ func Parse() Config {
 	workers := flag.Int("workers", defaultWorkers, "number of concurrent album workers")
 	httpTimeout := flag.Duration("http-timeout", 2*time.Minute, "HTTP request timeout")
 	albums := flag.String("albums", "", "comma-separated album names or CIDs to download")
-	chooseAlbums := flag.Bool("choose-albums", false, "interactively choose albums to download")
+	chooseAlbums := flag.Bool("choose-albums", true, "interactively choose albums to download (default: true; set --choose-albums=false to download all)")
 	refreshAlbums := flag.Bool("refresh-albums", false, "fetch album catalog from API and update cache")
 	albumCachePath := flag.String("album-cache", "", "album cache file path (default: <output>/albums_cache.json)")
 

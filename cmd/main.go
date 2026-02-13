@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -9,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/huh"
 
 	"msr-archiver/internal/api"
 	"msr-archiver/internal/audio"
@@ -241,100 +241,133 @@ func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
 		return nil, fmt.Errorf("interactive selection requires a terminal; use --albums instead")
 	}
 
-	fmt.Println("Select albums to download:")
-	for i, a := range albums {
-		fmt.Printf("%3d. %s (%s)\n", i+1, a.Name, a.CID)
-	}
-	fmt.Print("Enter indexes (e.g. 1,3-5) or 'all': ")
+	selected := make(map[int]struct{})
 
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil && !errors.Is(err, os.ErrClosed) {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			return nil, fmt.Errorf("read selection: %w", err)
+	for {
+		options := make([]huh.Option[int], 0, len(albums))
+		for idx, album := range albums {
+			label := fmt.Sprintf("%s (%s)", album.Name, album.CID)
+			option := huh.NewOption(label, idx)
+			if _, ok := selected[idx]; ok {
+				option = option.Selected(true)
+			}
+			options = append(options, option)
+		}
+
+		var selectedInView []int
+		err = huh.NewForm(
+			huh.NewGroup(
+				huh.NewMultiSelect[int]().
+					Title("Select albums to download").
+					Description("Use x/space to toggle. Press / anytime to search by album name/CID. Active filter is shown as /query near the title.").
+					Options(options...).
+					Value(&selectedInView),
+			),
+		).Run()
+		if err != nil {
+			return nil, fmt.Errorf("run interactive album selector: %w", err)
+		}
+
+		selected = make(map[int]struct{}, len(selectedInView))
+		for _, idx := range selectedInView {
+			selected[idx] = struct{}{}
+		}
+
+		selectedIndexes := selectedIndexesFromSet(selected)
+		start, reviewErr := confirmSelectedAlbums(albums, selectedIndexes)
+		if reviewErr != nil {
+			return nil, fmt.Errorf("review selected albums: %w", reviewErr)
+		}
+		if start {
+			return albumsFromIndexes(albums, selectedIndexes)
 		}
 	}
-	line = strings.TrimSpace(line)
-
-	indexes, err := parseAlbumIndexes(line, len(albums))
-	if err != nil {
-		return nil, err
-	}
-
-	selected := make([]model.Album, 0, len(indexes))
-	for _, idx := range indexes {
-		selected = append(selected, albums[idx])
-	}
-	return selected, nil
 }
 
-func parseAlbumIndexes(input string, max int) ([]int, error) {
-	input = strings.TrimSpace(strings.ToLower(input))
-	if input == "" {
-		return nil, fmt.Errorf("no selection provided")
+func selectedIndexesFromSet(selected map[int]struct{}) []int {
+	indexes := make([]int, 0, len(selected))
+	for idx := range selected {
+		indexes = append(indexes, idx)
 	}
-	if input == "all" {
-		out := make([]int, 0, max)
-		for i := 0; i < max; i++ {
-			out = append(out, i)
-		}
-		return out, nil
+	sort.Ints(indexes)
+	return indexes
+}
+
+func confirmSelectedAlbums(albums []model.Album, selectedIndexes []int) (bool, error) {
+	options := []huh.Option[string]{
+		huh.NewOption("Back to selection", "back"),
+	}
+	if len(selectedIndexes) > 0 {
+		options = append([]huh.Option[string]{huh.NewOption("Start download", "start")}, options...)
 	}
 
-	seen := make(map[int]struct{})
-	parts := strings.Split(input, ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
+	var action string
+	err := huh.NewSelect[string]().
+		Title("Review selected albums").
+		Description(buildSelectedAlbumsPreview(albums, selectedIndexes, 16)).
+		Options(options...).
+		Value(&action).
+		Run()
+	if err != nil {
+		return false, err
+	}
+
+	return action == "start", nil
+}
+
+func buildSelectedAlbumsPreview(albums []model.Album, selectedIndexes []int, maxItems int) string {
+	if len(selectedIndexes) == 0 {
+		return "No albums selected yet."
+	}
+	if maxItems < 1 {
+		maxItems = 1
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Selected %d album(s):", len(selectedIndexes)))
+
+	shown := 0
+	for _, idx := range selectedIndexes {
+		if idx < 0 || idx >= len(albums) {
 			continue
 		}
+		shown++
+		album := albums[idx]
+		b.WriteString(fmt.Sprintf("\n%d. %s (%s)", shown, album.Name, album.CID))
+		if shown >= maxItems {
+			break
+		}
+	}
 
-		if strings.Contains(part, "-") {
-			bounds := strings.SplitN(part, "-", 2)
-			if len(bounds) != 2 {
-				return nil, fmt.Errorf("invalid range %q", part)
-			}
-			start, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
-			if err != nil {
-				return nil, fmt.Errorf("invalid range start %q", part)
-			}
-			end, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
-			if err != nil {
-				return nil, fmt.Errorf("invalid range end %q", part)
-			}
-			if start > end {
-				start, end = end, start
-			}
-			if start < 1 || end > max {
-				return nil, fmt.Errorf("range %q out of bounds; valid indexes are 1-%d", part, max)
-			}
-			for i := start; i <= end; i++ {
-				seen[i-1] = struct{}{}
-			}
+	if len(selectedIndexes) > shown {
+		b.WriteString(fmt.Sprintf("\n... and %d more", len(selectedIndexes)-shown))
+	}
+
+	return b.String()
+}
+
+func albumsFromIndexes(albums []model.Album, indexes []int) ([]model.Album, error) {
+	if len(indexes) == 0 {
+		return nil, fmt.Errorf("no albums selected")
+	}
+
+	seen := make(map[int]struct{}, len(indexes))
+	selected := make([]model.Album, 0, len(indexes))
+	for _, idx := range indexes {
+		if idx < 0 || idx >= len(albums) {
+			return nil, fmt.Errorf("selected album index %d out of bounds", idx)
+		}
+		if _, ok := seen[idx]; ok {
 			continue
 		}
-
-		idx, err := strconv.Atoi(part)
-		if err != nil {
-			return nil, fmt.Errorf("invalid index %q", part)
-		}
-		if idx < 1 || idx > max {
-			return nil, fmt.Errorf("index %d out of bounds; valid indexes are 1-%d", idx, max)
-		}
-		seen[idx-1] = struct{}{}
+		seen[idx] = struct{}{}
+		selected = append(selected, albums[idx])
 	}
 
-	if len(seen) == 0 {
-		return nil, fmt.Errorf("no valid indexes selected")
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no albums selected")
 	}
-
-	out := make([]int, 0, len(seen))
-	for idx := range seen {
-		out = append(out, idx)
-	}
-	sort.Ints(out)
-	return out, nil
+	return selected, nil
 }
 
 func processAlbum(

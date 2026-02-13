@@ -29,12 +29,12 @@ Useful flags:
 ```bash
 go run ./cmd --output ./MonsterSiren --workers 6 --http-timeout 2m --refresh-albums
 go run ./cmd --albums "A Walk in the Dust,ab12cd34"
-go run ./cmd --choose-albums
+go run ./cmd --choose-albums=false
 ```
 
 Album selection flags:
 - `--albums`: comma-separated album names/CIDs (supports unique partial matches)
-- `--choose-albums`: interactive index-based selection in terminal
+- `--choose-albums`: interactive multi-select picker with built-in `/` filtering and final selected-albums review (default: `true`)
 - `--refresh-albums`: force refresh from API and update album cache
 - `--album-cache`: custom cache file path
 
