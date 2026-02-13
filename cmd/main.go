@@ -57,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	selectedAlbums, err := chooseAlbums(cfg, albums)
+	selectedAlbums, err := chooseAlbums(cfg, albums, store)
 	if err != nil {
 		logger.Errorf("select albums: %v", err)
 		os.Exit(1)
@@ -170,7 +170,7 @@ func shouldUseCachedAlbums(cachedAt time.Time, ttl time.Duration, now time.Time)
 	return age <= ttl
 }
 
-func chooseAlbums(cfg config.Config, albums []model.Album) ([]model.Album, error) {
+func chooseAlbums(cfg config.Config, albums []model.Album, store *state.Store) ([]model.Album, error) {
 	if len(albums) == 0 {
 		return nil, nil
 	}
@@ -179,7 +179,7 @@ func chooseAlbums(cfg config.Config, albums []model.Album) ([]model.Album, error
 		return selectAlbumsByQuery(albums, cfg.Albums)
 	}
 	if cfg.ChooseAlbums {
-		return chooseAlbumsInteractively(albums)
+		return chooseAlbumsInteractively(albums, store)
 	}
 	return albums, nil
 }
@@ -258,7 +258,7 @@ func resolveAlbumQuery(albums []model.Album, query string) (model.Album, error) 
 	return model.Album{}, fmt.Errorf("album query %q not found", query)
 }
 
-func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
+func chooseAlbumsInteractively(albums []model.Album, store *state.Store) ([]model.Album, error) {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("inspect stdin: %w", err)
@@ -272,7 +272,8 @@ func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
 	for {
 		options := make([]huh.Option[int], 0, len(albums))
 		for idx, album := range albums {
-			label := fmt.Sprintf("%3d. %s (%s)", idx+1, album.Name, album.CID)
+			completed := store != nil && store.IsCompleted(album.Name)
+			label := albumOptionLabel(idx+1, album, completed)
 			option := huh.NewOption(label, idx)
 			if _, ok := selected[idx]; ok {
 				option = option.Selected(true)
@@ -309,6 +310,13 @@ func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
 			return albumsFromIndexes(albums, selectedIndexes)
 		}
 	}
+}
+
+func albumOptionLabel(order int, album model.Album, completed bool) string {
+	if completed {
+		return fmt.Sprintf("%3d. %s (%s) [downloaded]", order, album.Name, album.CID)
+	}
+	return fmt.Sprintf("%3d. %s (%s)", order, album.Name, album.CID)
 }
 
 func selectedIndexesFromSet(selected map[int]struct{}) []int {

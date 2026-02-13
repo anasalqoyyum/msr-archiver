@@ -4,7 +4,7 @@ Download Arknights OSTs from `monster-siren.hypergryph.com` with album/song meta
 
 ## Behavior
 
-- Downloads all albums and songs.
+- Downloads any albums and songs.
 - Converts WAV sources to FLAC (`ffmpeg`).
 - Writes metadata (`album`, `title`, `album artist`, `artist`, `track`).
 - Embeds cover art and lyric metadata when available.
@@ -35,7 +35,7 @@ go run ./cmd --album-cache-ttl 24h
 
 Album selection flags:
 - `--albums`: comma-separated album names/CIDs (supports unique partial matches)
-- `--choose-albums`: interactive numbered multi-select picker with built-in `/` filtering (shows `/input` while filtering) and final selected-albums review (default: `true`)
+- `--choose-albums`: interactive numbered multi-select picker with built-in `/` filtering (shows `/input` while filtering), `[downloaded]` markers from `completed_albums.json`, and final selected-albums review (default: `true`)
 - `--refresh-albums`: force refresh from API and update album cache
 - `--album-cache`: custom cache file path
 - `--album-cache-ttl`: cache max age before refresh (default `24h`, set `0` to disable TTL)
@@ -52,7 +52,3 @@ go build -o msr-archiver ./cmd
 ```bash
 CGO_ENABLED=0 go test ./...
 ```
-
-## Plan
-
-Detailed implementation notes are in `MIGRATION_PLAN.md`.

@@ -57,6 +57,22 @@ func TestSelectedIndexesFromSetSorted(t *testing.T) {
 	}
 }
 
+func TestAlbumOptionLabelMarksDownloaded(t *testing.T) {
+	album := model.Album{CID: "a1", Name: "First"}
+	label := albumOptionLabel(1, album, true)
+	if label != "  1. First (a1) [downloaded]" {
+		t.Fatalf("unexpected label: %q", label)
+	}
+}
+
+func TestAlbumOptionLabelWithoutDownloadedMarker(t *testing.T) {
+	album := model.Album{CID: "a1", Name: "First"}
+	label := albumOptionLabel(1, album, false)
+	if label != "  1. First (a1)" {
+		t.Fatalf("unexpected label: %q", label)
+	}
+}
+
 func TestBuildSelectedAlbumsPreview(t *testing.T) {
 	albums := []model.Album{{CID: "a1", Name: "First"}, {CID: "b2", Name: "Second"}, {CID: "c3", Name: "Third"}}
 
