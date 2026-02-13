@@ -15,6 +15,7 @@ type Config struct {
 	ChooseAlbums   bool
 	RefreshAlbums  bool
 	AlbumCachePath string
+	AlbumCacheTTL  time.Duration
 }
 
 // Parse reads CLI flags into Config.
@@ -31,6 +32,7 @@ func Parse() Config {
 	chooseAlbums := flag.Bool("choose-albums", true, "interactively choose albums to download (default: true; set --choose-albums=false to download all)")
 	refreshAlbums := flag.Bool("refresh-albums", false, "fetch album catalog from API and update cache")
 	albumCachePath := flag.String("album-cache", "", "album cache file path (default: <output>/albums_cache.json)")
+	albumCacheTTL := flag.Duration("album-cache-ttl", 24*time.Hour, "album cache max age before refresh (0 or negative disables TTL)")
 
 	flag.Parse()
 
@@ -46,5 +48,6 @@ func Parse() Config {
 		ChooseAlbums:   *chooseAlbums,
 		RefreshAlbums:  *refreshAlbums,
 		AlbumCachePath: *albumCachePath,
+		AlbumCacheTTL:  *albumCacheTTL,
 	}
 }

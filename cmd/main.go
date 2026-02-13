@@ -115,11 +115,22 @@ func loadAlbums(
 	}
 
 	if hasCached && !cfg.RefreshAlbums {
-		logger.Infof("Loaded %d albums from cache: %s", len(cached), cache.Path())
-		if !cachedAt.IsZero() {
-			logger.Infof("Album cache timestamp: %s", cachedAt.Local().Format(time.RFC3339))
+		if shouldUseCachedAlbums(cachedAt, cfg.AlbumCacheTTL, time.Now()) {
+			logger.Infof("Loaded %d albums from cache: %s", len(cached), cache.Path())
+			if !cachedAt.IsZero() {
+				logger.Infof("Album cache timestamp: %s", cachedAt.Local().Format(time.RFC3339))
+			}
+			return cached, nil
 		}
-		return cached, nil
+
+		if cfg.AlbumCacheTTL > 0 {
+			if cachedAt.IsZero() {
+				logger.Infof("Album cache has no timestamp; refreshing from API")
+			} else {
+				age := time.Since(cachedAt).Round(time.Second)
+				logger.Infof("Album cache is stale (age %s > ttl %s); refreshing from API", age, cfg.AlbumCacheTTL)
+			}
+		}
 	}
 
 	logger.Infof("Fetching album catalog from API")
@@ -142,6 +153,21 @@ func loadAlbums(
 	}
 
 	return albums, nil
+}
+
+func shouldUseCachedAlbums(cachedAt time.Time, ttl time.Duration, now time.Time) bool {
+	if ttl <= 0 {
+		return true
+	}
+	if cachedAt.IsZero() {
+		return false
+	}
+
+	age := now.Sub(cachedAt)
+	if age < 0 {
+		return true
+	}
+	return age <= ttl
 }
 
 func chooseAlbums(cfg config.Config, albums []model.Album) ([]model.Album, error) {
@@ -246,7 +272,7 @@ func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
 	for {
 		options := make([]huh.Option[int], 0, len(albums))
 		for idx, album := range albums {
-			label := fmt.Sprintf("%s (%s)", album.Name, album.CID)
+			label := fmt.Sprintf("%3d. %s (%s)", idx+1, album.Name, album.CID)
 			option := huh.NewOption(label, idx)
 			if _, ok := selected[idx]; ok {
 				option = option.Selected(true)
@@ -258,12 +284,13 @@ func chooseAlbumsInteractively(albums []model.Album) ([]model.Album, error) {
 		err = huh.NewForm(
 			huh.NewGroup(
 				huh.NewMultiSelect[int]().
-					Title("Select albums to download").
-					Description("Use x/space to toggle. Press / anytime to search by album name/CID. Active filter is shown as /query near the title.").
+					Title(fmt.Sprintf("Select albums to download (%d total)", len(albums))).
+					Description("Use x/space to toggle. Press / to enter filter mode. While filtering, a /input line appears at the top; type to search, then press Enter or Esc to apply.").
+					Height(14).
 					Options(options...).
 					Value(&selectedInView),
 			),
-		).Run()
+		).WithShowHelp(true).Run()
 		if err != nil {
 			return nil, fmt.Errorf("run interactive album selector: %w", err)
 		}
@@ -304,7 +331,7 @@ func confirmSelectedAlbums(albums []model.Album, selectedIndexes []int) (bool, e
 	var action string
 	err := huh.NewSelect[string]().
 		Title("Review selected albums").
-		Description(buildSelectedAlbumsPreview(albums, selectedIndexes, 16)).
+		Description(buildSelectedAlbumsPreview(albums, selectedIndexes, 8)).
 		Options(options...).
 		Value(&action).
 		Run()

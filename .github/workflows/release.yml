@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release artifacts
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          targets=(
+            "linux amd64"
+            "linux arm64"
+            "darwin amd64"
+            "darwin arm64"
+            "windows amd64"
+          )
+
+          for target in "${targets[@]}"; do
+            GOOS="${target%% *}"
+            GOARCH="${target##* }"
+
+            EXT=""
+            ARCHIVE_EXT="tar.gz"
+            if [ "$GOOS" = "windows" ]; then
+              EXT=".exe"
+              ARCHIVE_EXT="zip"
+            fi
+
+            BIN_NAME="msr-archiver${EXT}"
+            ASSET_BASE="msr-archiver_${VERSION}_${GOOS}_${GOARCH}"
+
+            echo "Building ${ASSET_BASE}"
+            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "dist/${BIN_NAME}" ./cmd
+
+            if [ "$ARCHIVE_EXT" = "zip" ]; then
+              (
+                cd dist
+                zip -q "${ASSET_BASE}.zip" "${BIN_NAME}"
+              )
+            else
+              tar -C dist -czf "dist/${ASSET_BASE}.tar.gz" "${BIN_NAME}"
+            fi
+
+            rm -f "dist/${BIN_NAME}"
+          done
+
+          (
+            cd dist
+            shasum -a 256 * > checksums.txt
+          )
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
