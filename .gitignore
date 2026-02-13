@@ -1,0 +1,9 @@
+.DS_Store
+MonsterSiren
+build
+dist
+.gocache
+.gomodcache
+.tmp
+/msd
+/msr-archiver
