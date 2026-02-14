@@ -35,7 +35,7 @@ go run ./cmd --album-cache-ttl 24h
 
 Album selection flags:
 - `--albums`: comma-separated album names/CIDs (supports unique partial matches)
-- `--choose-albums`: interactive numbered multi-select picker with built-in `/` filtering (shows `/input` while filtering), `[downloaded]` markers from `completed_albums.json`, and final selected-albums review (default: `true`)
+- `--choose-albums`: interactive numbered multi-select picker with `/` filtering, `d` for album details/song list, `ctrl+a` select-all, `ctrl+u`/`ctrl+d` (`pgup`/`pgdown`) jump, `[downloaded]` markers from `completed_albums.json`, and final selected-albums review (default: `true`)
 - `--refresh-albums`: force refresh from API and update album cache
 - `--album-cache`: custom cache file path
 - `--album-cache-ttl`: cache max age before refresh (default `24h`, set `0` to disable TTL)

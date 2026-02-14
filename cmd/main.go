@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/huh"
-
 	"msr-archiver/internal/api"
 	"msr-archiver/internal/audio"
 	"msr-archiver/internal/catalog"
@@ -57,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	selectedAlbums, err := chooseAlbums(cfg, albums, store)
+	selectedAlbums, err := chooseAlbums(ctx, cfg, albums, store, apiClient)
 	if err != nil {
 		logger.Errorf("select albums: %v", err)
 		os.Exit(1)
@@ -170,7 +168,13 @@ func shouldUseCachedAlbums(cachedAt time.Time, ttl time.Duration, now time.Time)
 	return age <= ttl
 }
 
-func chooseAlbums(cfg config.Config, albums []model.Album, store *state.Store) ([]model.Album, error) {
+func chooseAlbums(
+	ctx context.Context,
+	cfg config.Config,
+	albums []model.Album,
+	store *state.Store,
+	apiClient *api.Client,
+) ([]model.Album, error) {
 	if len(albums) == 0 {
 		return nil, nil
 	}
@@ -179,7 +183,7 @@ func chooseAlbums(cfg config.Config, albums []model.Album, store *state.Store) (
 		return selectAlbumsByQuery(albums, cfg.Albums)
 	}
 	if cfg.ChooseAlbums {
-		return chooseAlbumsInteractively(albums, store)
+		return chooseAlbumsInteractively(ctx, albums, store, apiClient)
 	}
 	return albums, nil
 }
@@ -258,60 +262,6 @@ func resolveAlbumQuery(albums []model.Album, query string) (model.Album, error) 
 	return model.Album{}, fmt.Errorf("album query %q not found", query)
 }
 
-func chooseAlbumsInteractively(albums []model.Album, store *state.Store) ([]model.Album, error) {
-	stat, err := os.Stdin.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("inspect stdin: %w", err)
-	}
-	if stat.Mode()&os.ModeCharDevice == 0 {
-		return nil, fmt.Errorf("interactive selection requires a terminal; use --albums instead")
-	}
-
-	selected := make(map[int]struct{})
-
-	for {
-		options := make([]huh.Option[int], 0, len(albums))
-		for idx, album := range albums {
-			completed := store != nil && store.IsCompleted(album.Name)
-			label := albumOptionLabel(idx+1, album, completed)
-			option := huh.NewOption(label, idx)
-			if _, ok := selected[idx]; ok {
-				option = option.Selected(true)
-			}
-			options = append(options, option)
-		}
-
-		var selectedInView []int
-		err = huh.NewForm(
-			huh.NewGroup(
-				huh.NewMultiSelect[int]().
-					Title(fmt.Sprintf("Select albums to download (%d total)", len(albums))).
-					Description("Use x/space to toggle. Press / to enter filter mode. While filtering, a /input line appears at the top; type to search, then press Enter or Esc to apply.").
-					Height(14).
-					Options(options...).
-					Value(&selectedInView),
-			),
-		).WithShowHelp(true).Run()
-		if err != nil {
-			return nil, fmt.Errorf("run interactive album selector: %w", err)
-		}
-
-		selected = make(map[int]struct{}, len(selectedInView))
-		for _, idx := range selectedInView {
-			selected[idx] = struct{}{}
-		}
-
-		selectedIndexes := selectedIndexesFromSet(selected)
-		start, reviewErr := confirmSelectedAlbums(albums, selectedIndexes)
-		if reviewErr != nil {
-			return nil, fmt.Errorf("review selected albums: %w", reviewErr)
-		}
-		if start {
-			return albumsFromIndexes(albums, selectedIndexes)
-		}
-	}
-}
-
 func albumOptionLabel(order int, album model.Album, completed bool) string {
 	if completed {
 		return fmt.Sprintf("%3d. %s (%s) [downloaded]", order, album.Name, album.CID)
@@ -326,28 +276,6 @@ func selectedIndexesFromSet(selected map[int]struct{}) []int {
 	}
 	sort.Ints(indexes)
 	return indexes
-}
-
-func confirmSelectedAlbums(albums []model.Album, selectedIndexes []int) (bool, error) {
-	options := []huh.Option[string]{
-		huh.NewOption("Back to selection", "back"),
-	}
-	if len(selectedIndexes) > 0 {
-		options = append([]huh.Option[string]{huh.NewOption("Start download", "start")}, options...)
-	}
-
-	var action string
-	err := huh.NewSelect[string]().
-		Title("Review selected albums").
-		Description(buildSelectedAlbumsPreview(albums, selectedIndexes, 8)).
-		Options(options...).
-		Value(&action).
-		Run()
-	if err != nil {
-		return false, err
-	}
-
-	return action == "start", nil
 }
 
 func buildSelectedAlbumsPreview(albums []model.Album, selectedIndexes []int, maxItems int) string {
