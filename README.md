@@ -33,6 +33,18 @@ go run ./cmd --choose-albums=false
 go run ./cmd --album-cache-ttl 24h
 ```
 
+## Bun/OpenTUI Version
+
+A new Bun + OpenTUI implementation lives in `tui`.
+
+```bash
+cd tui
+bun install
+bun run src/index.tsx
+```
+
+It keeps the same core capabilities (album selection/filtering, downloads, cache/state, metadata) and adds a split-pane picker with song preview on the right for the currently focused album.
+
 Album selection flags:
 - `--albums`: comma-separated album names/CIDs (supports unique partial matches)
 - `--choose-albums`: interactive numbered multi-select picker with `/` filtering, `d` for album details/song list, `ctrl+a` select-all, `ctrl+u`/`ctrl+d` (`pgup`/`pgdown`) jump, `[downloaded]` markers from `completed_albums.json`, and final selected-albums review (default: `true`)

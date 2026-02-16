@@ -5,5 +5,7 @@ dist
 .gocache
 .gomodcache
 .tmp
+.opencode
 /msd
 /msr-archiver
+node_modules
